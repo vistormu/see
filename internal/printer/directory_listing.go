@@ -16,6 +16,8 @@ import (
 var hiddenStyle = ansi.Dim + ansi.Rgb(128, 128, 128)
 
 const (
+	treeMiddle   = TreeBranch + TreeHLine + " "
+	treeEnd      = TreeLeaf + TreeHLine + " "
 	rootDirStyle = ansi.Bold + ansi.Green
 	subDirStyle  = ansi.Bold + ansi.Blue
 	fileStyle    = ansi.Cyan2
@@ -24,189 +26,402 @@ const (
 	emptyStyle   = ansi.Red2
 )
 
+// =======
+// columns
+// =======
+// tree
+type rootDirName struct {
+	git    string
+	name   string
+	length int
+}
+
+type subDirName struct {
+	divider string
+	git     string
+	name    string
+	length  int
+}
+
+type fileName struct {
+	divider string
+	icon    string
+	name    string
+	length  int
+}
+
+type treeColumn struct {
+	root      rootDirName
+	dirs      []subDirName
+	files     []fileName
+	maxLength int
+}
+
+// files
+type nFiles struct {
+	files  string
+	length int
+}
+
+type filesColumn struct {
+	root      nFiles
+	items     []nFiles
+	maxLength int
+}
+
+// dirs
+type nDirs struct {
+	dirs   string
+	length int
+}
+
+type dirsColumn struct {
+	root      nDirs
+	items     []nDirs
+	maxLength int
+}
+
+// size
+type size struct {
+	size   string
+	length int
+}
+
+type sizeColumn struct {
+	root      size
+	items     []size
+	maxLength int
+}
+
 // =====
 // print
 // =====
-type dirPrint struct {
-	divider       string
-	dividerLength int
-	git           string
-	gitLength     int
-	name          string
-	nameLength    int
-	items         string
-	itemsLength   int
-	size          string
-	sizeLength    int
-	spaces        int
-}
-
-type filePrint struct {
-	divider       string
-	dividerLength int
-	icon          string
-	iconLength    int
-	name          string
-	nameLength    int
-	size          string
-	sizeLength    int
-	spaces        int
-}
-
 func printDirectoryListing(root *builder.Directory) error {
-	// TODO: this does not work if the depth is greater than 1
-	dirs := make([]dirPrint, len(root.Dirs)+1)
-	files := make([]filePrint, len(root.Files))
+	treeColumn := createTreeColumn(root)
+	filesColumn := createFilesColumn(root)
+	dirsColumn := createDirsColumn(root)
+	sizeColumn := createSizeColumn(root)
 
-	// root line
-	rootDirPrint := printRootDir(root)
-	dirs[0] = rootDirPrint
+	lines := make([]string, 0)
+	freeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
+	freeSpace += 2 // account for the two extra spaces between columns
+	spaces := repeat(" ", freeSpace)
 
-	// print directories
-	for i, dir := range root.Dirs {
-		isLast := i == len(root.Dirs)-1 && len(root.Files) == 0
-		subDirPrint := printSubDir(dir, isLast)
-		dirs[i+1] = subDirPrint
-	}
+	// header
+	// line := fmt.Sprintf("%s%s%s%s",
+	// 	repeat(".", treeColumn.maxLength)+repeat("-", freeSpace),
+	// 	ansi.Underline,
+	// 	"items"+repeat(" ", (filesColumn.maxLength+dirsColumn.maxLength)-len("items")),
+	// 	ansi.Reset,
+	// )
+	// lines = append(lines, line)
 
-	// print files
-	for i, file := range root.Files {
-		isLast := i == len(root.Files)-1
-		filePrint := printFile(file, isLast)
-		files[i] = filePrint
-	}
+	// root
+	line := fmt.Sprintf("%s%s%s",
+		treeColumn.root.git,
+		treeColumn.root.name,
+		repeat(" ", treeColumn.maxLength-treeColumn.root.length),
+	)
 
-	// result
-	longestSizeLength := 0
-	for _, dir := range dirs {
-		if dir.sizeLength > longestSizeLength {
-			longestSizeLength = dir.sizeLength
-		}
-	}
-	for _, file := range files {
-		if file.sizeLength > longestSizeLength {
-			longestSizeLength = file.sizeLength
-		}
-	}
+	// spaces
+	// line += spaces
+	line += repeat(" ", freeSpace)
 
-	result := ""
-	for _, dir := range dirs {
-		nSpaces := longestSizeLength - dir.sizeLength + 1 // +1 for the space before the size
-		result += fmt.Sprintf("%s%s%s%s%s%s%s\n",
-			dir.divider,
-			dir.git,
-			dir.name,
-			repeat(" ", dir.spaces-nSpaces+1),
-			dir.items,
-			repeat(" ", nSpaces),
-			dir.size,
+	// files column
+	line += fmt.Sprintf("%s%s",
+		repeat(" ", filesColumn.maxLength-filesColumn.root.length),
+		filesColumn.root.files,
+	)
+
+	line += " "
+
+	// dirs column
+	line += fmt.Sprintf("%s%s",
+		repeat("-", dirsColumn.maxLength-dirsColumn.root.length),
+		dirsColumn.root.dirs,
+	)
+
+	line += " "
+
+	// size
+	line += fmt.Sprintf("%s%s",
+		repeat(".", sizeColumn.maxLength-sizeColumn.root.length),
+		sizeColumn.root.size,
+	)
+
+	lines = append(lines, line)
+
+	// dirs
+	for i := range treeColumn.dirs {
+		// tree column
+		line := fmt.Sprintf("%s%s%s%s",
+			treeColumn.dirs[i].divider,
+			treeColumn.dirs[i].git,
+			treeColumn.dirs[i].name,
+			repeat(" ", treeColumn.maxLength-treeColumn.dirs[i].length),
 		)
-	}
 
-	for _, file := range files {
-		result += fmt.Sprintf("%s%s %s%s%s\n",
-			file.divider,
-			file.icon,
-			file.name,
-			repeat(" ", file.spaces),
-			file.size,
+		// spaces
+		line += spaces
+
+		// files column
+		line += fmt.Sprintf("%s%s",
+			repeat(" ", filesColumn.maxLength-filesColumn.items[i].length),
+			filesColumn.items[i].files,
 		)
+
+		line += " "
+
+		// dirs column
+		line += fmt.Sprintf("%s%s",
+			repeat(" ", dirsColumn.maxLength-dirsColumn.items[i].length),
+			dirsColumn.items[i].dirs,
+		)
+
+		line += " "
+
+		// size column
+		line += fmt.Sprintf("%s%s",
+			repeat(" ", sizeColumn.maxLength-sizeColumn.items[i].length),
+			sizeColumn.items[i].size,
+		)
+
+		lines = append(lines, line)
+	}
+	// files
+	for i := range treeColumn.files {
+		// tree column
+		line = fmt.Sprintf("%s%s %s%s",
+			treeColumn.files[i].divider,
+			treeColumn.files[i].icon,
+			treeColumn.files[i].name,
+			repeat(" ", treeColumn.maxLength-treeColumn.files[i].length),
+		)
+
+		// spaces
+		line += spaces
+
+		// files column
+		line += repeat(" ", filesColumn.maxLength)
+
+		line += " "
+
+		// dirs column
+		line += repeat(" ", dirsColumn.maxLength)
+
+		line += " "
+
+		// size column
+		line += fmt.Sprintf("%s%s",
+			repeat(" ", sizeColumn.maxLength-sizeColumn.items[len(treeColumn.dirs)+i].length),
+			sizeColumn.items[len(treeColumn.dirs)+i].size,
+		)
+
+		lines = append(lines, line)
 	}
 
-	fmt.Print(result)
+	fmt.Println(strings.Join(lines, "\n") + "\n")
 
 	return nil
+}
+
+func createTreeColumn(root *builder.Directory) treeColumn {
+	// root
+	// git status
+	rootGitStatus, rootGitStatusLength := gitStatusToString(root.GitStatus)
+	if rootGitStatusLength != 0 {
+		rootGitStatus += " "
+		rootGitStatusLength += 1 // account for the space after the git status
+	}
+
+	// dir name
+	rootName, rootNameLength := dirNameToString(root.Name, true)
+
+	// length
+	rootLength := rootGitStatusLength + rootNameLength + 4 // account that there is no divider for the root
+	maxLength := rootLength
+
+	// dirs
+	dirs := make([]subDirName, len(root.Dirs))
+	for i, dir := range root.Dirs {
+		// divider
+		divider := treeMiddle
+		if i == len(root.Dirs)-1 && len(root.Files) == 0 {
+			divider = treeEnd
+		}
+		dividerLength := len(divider)
+
+		// git status
+		dirGitStatus, dirGitStatusLength := gitStatusToString(dir.GitStatus)
+		if dirGitStatusLength != 0 {
+			dirGitStatus += " "
+			dirGitStatusLength += 1 // account for the space after the git status
+		}
+
+		// name
+		dirName, dirNameLength := dirNameToString(dir.Name, false)
+
+		// length
+		length := dividerLength + dirGitStatusLength + dirNameLength
+		maxLength = max(maxLength, length)
+
+		dirs[i] = subDirName{
+			divider: divider,
+			git:     dirGitStatus,
+			name:    dirName,
+			length:  length,
+		}
+	}
+
+	// files
+	files := make([]fileName, len(root.Files))
+	for i, file := range root.Files {
+		// divider
+		divider := treeMiddle
+		if i == len(root.Files)-1 {
+			divider = treeEnd
+		}
+		dividerLength := len(divider)
+
+		// icon
+		icon, iconLength := iconToString(file.Name)
+
+		// name
+		name, nameLength := fileNameToString(file.Name)
+
+		length := dividerLength + 1 + iconLength + nameLength
+		maxLength = max(maxLength, length)
+
+		files[i] = fileName{
+			divider: divider,
+			icon:    icon,
+			name:    name,
+			length:  length,
+		}
+	}
+
+	return treeColumn{
+		root: rootDirName{
+			git:    rootGitStatus,
+			name:   rootName,
+			length: rootLength,
+		},
+		dirs:      dirs,
+		files:     files,
+		maxLength: maxLength,
+	}
+}
+
+func createFilesColumn(root *builder.Directory) filesColumn {
+	// root
+	rootFilesStr, rootFilesLength := nFilesToString(len(root.Files))
+
+	maxLength := rootFilesLength
+
+	// dirs
+	items := make([]nFiles, len(root.Files)+len(root.Dirs))
+	for i, dir := range root.Dirs {
+		filesStr, filesLength := nFilesToString(len(dir.Files))
+		items[i] = nFiles{
+			files:  filesStr,
+			length: filesLength,
+		}
+		maxLength = max(maxLength, filesLength)
+	}
+
+	// files
+	for i := range root.Files {
+		j := len(root.Dirs) + i
+		items[j] = nFiles{
+			files:  "",
+			length: 0,
+		}
+	}
+
+	return filesColumn{
+		root: nFiles{
+			files:  rootFilesStr,
+			length: rootFilesLength,
+		},
+		items:     items,
+		maxLength: maxLength,
+	}
+}
+
+func createDirsColumn(root *builder.Directory) dirsColumn {
+	// root
+	rootDirsStr, rootDirsLength := nDirsToString(len(root.Dirs))
+
+	maxLength := rootDirsLength
+
+	// dirs
+	items := make([]nDirs, len(root.Dirs)+len(root.Files))
+	for i, dir := range root.Dirs {
+		dirsStr, dirsLength := nDirsToString(len(dir.Dirs))
+		items[i] = nDirs{
+			dirs:   dirsStr,
+			length: dirsLength,
+		}
+		maxLength = max(maxLength, dirsLength)
+	}
+
+	// files
+	for i := range root.Files {
+		j := len(root.Dirs) + i
+		items[j] = nDirs{
+			dirs:   "",
+			length: 0,
+		}
+	}
+
+	return dirsColumn{
+		root: nDirs{
+			dirs:   rootDirsStr,
+			length: rootDirsLength,
+		},
+		items:     items,
+		maxLength: maxLength,
+	}
+}
+
+func createSizeColumn(root *builder.Directory) sizeColumn {
+	// root
+	rootSizeStr, rootSizeLength := sizeToString(root.Size)
+
+	maxLength := rootSizeLength
+
+	// dirs
+	items := make([]size, len(root.Dirs)+len(root.Files))
+	for i, dir := range root.Dirs {
+		sizeStr, sizeLength := sizeToString(dir.Size)
+		items[i] = size{
+			size:   sizeStr,
+			length: sizeLength,
+		}
+		maxLength = max(maxLength, sizeLength)
+	}
+
+	// files
+	for i := range root.Files {
+		j := len(root.Dirs) + i
+		sizeStr, sizeLength := sizeToString(root.Files[i].Size)
+		items[j] = size{
+			size:   sizeStr,
+			length: sizeLength,
+		}
+		maxLength = max(maxLength, sizeLength)
+	}
+
+	return sizeColumn{
+		root:      size{size: rootSizeStr, length: rootSizeLength},
+		items:     items,
+		maxLength: maxLength,
+	}
 }
 
 // =======
 // helpers
 // =======
-func printRootDir(dir *builder.Directory) dirPrint {
-	rootGitStatus, rootGitStatusLength := gitStatusToString(dir.GitStatus)
-	if rootGitStatusLength != 0 {
-		rootGitStatus += " "
-		rootGitStatusLength += 1 // account for the space after the git status
-	}
-	rootName, rootNameLenght := dirNameToString(dir.Name, true)
-	rootItems, rootItemsLength := itemsToString(len(dir.Dirs), len(dir.Files))
-	rootSize, rootSizeLength := sizeToString(dir.Size)
-	nSpaces := termWidth - (rootGitStatusLength + rootNameLenght + rootItemsLength + rootSizeLength)
-
-	return dirPrint{
-		divider:       "",
-		dividerLength: 0,
-		git:           rootGitStatus,
-		gitLength:     rootGitStatusLength,
-		name:          rootName,
-		nameLength:    rootNameLenght,
-		items:         rootItems,
-		itemsLength:   rootItemsLength,
-		size:          rootSize,
-		sizeLength:    rootSizeLength,
-		spaces:        nSpaces - 2,
-	}
-}
-
-func printSubDir(dir *builder.Directory, isLast bool) dirPrint {
-	// divider
-	divider := TreeBranch + TreeHLine + " "
-	if isLast {
-		divider = TreeLeaf + TreeHLine + " "
-	}
-	dividerLength := len(divider)
-
-	// print
-	dirGitStatus, dirGitStatusLength := gitStatusToString(dir.GitStatus)
-	if dirGitStatusLength != 0 {
-		dirGitStatus += " "
-		dirGitStatusLength += 1 // account for the space after the git status
-	}
-	dirName, dirNameLength := dirNameToString(dir.Name, false)
-	dirItems, dirItemsLength := itemsToString(len(dir.Dirs), len(dir.Files))
-	dirSize, dirSizeLength := sizeToString(dir.Size)
-	nSpaces := termWidth - (dividerLength + dirGitStatusLength + dirNameLength + dirItemsLength + dirSizeLength)
-
-	return dirPrint{
-		divider:       divider,
-		dividerLength: dividerLength,
-		git:           dirGitStatus,
-		gitLength:     dirGitStatusLength,
-		name:          dirName,
-		nameLength:    dirNameLength,
-		items:         dirItems,
-		itemsLength:   dirItemsLength,
-		size:          dirSize,
-		sizeLength:    dirSizeLength,
-		spaces:        nSpaces + 2,
-	}
-}
-
-func printFile(file builder.File, isLast bool) filePrint {
-	divider := TreeBranch + TreeHLine + " "
-	if isLast {
-		divider = TreeLeaf + TreeHLine + " "
-	}
-	dividerLength := len(divider)
-
-	// print
-	fileIcon, fileIconLength := iconToString(file.Name)
-	fileName, fileNameLength := fileNameToString(file.Name)
-	fileSize, fileSizeLength := sizeToString(file.Size)
-	nSpaces := termWidth - (dividerLength + fileIconLength + fileNameLength + fileSizeLength)
-
-	return filePrint{
-		divider:       divider,
-		dividerLength: dividerLength,
-		icon:          fileIcon,
-		iconLength:    fileIconLength,
-		name:          fileName,
-		nameLength:    fileNameLength,
-		size:          fileSize,
-		sizeLength:    fileSizeLength,
-		spaces:        nSpaces + 2,
-	}
-}
-
 func gitStatusToString(status builder.GitStatus) (string, int) {
 	var gitColor string
 	switch status {
@@ -220,7 +435,7 @@ func gitStatusToString(status builder.GitStatus) (string, int) {
 		return "", 0
 	}
 
-	str := fmt.Sprintf("%s%s%s", gitColor, Git, ansi.Reset)
+	str := fmt.Sprintf("%s%s%s", gitColor, GitIcon, ansi.Reset)
 	length := 1
 
 	return str, length
@@ -249,26 +464,28 @@ func dirNameToString(name string, isRoot bool) (string, int) {
 	return nameStr, length
 }
 
-func itemsToString(nDirs, nFiles int) (string, int) {
-	itemsStr := ""
-	switch {
-	case nDirs == 0 && nFiles == 0:
-		itemsStr = ""
-
-	case nDirs == 0 && nFiles > 0:
-		itemsStr = fmt.Sprintf("%d files", nFiles)
-
-	case nDirs > 0 && nFiles == 0:
-		itemsStr = fmt.Sprintf("%d dirs", nDirs)
-
-	case nDirs > 0 && nFiles > 0:
-		itemsStr = fmt.Sprintf("%d dirs, %d files", nDirs, nFiles)
+func nDirsToString(nDirs int) (string, int) {
+	if nDirs == 0 {
+		return "", 0
 	}
 
-	length := len(itemsStr)
-	itemsStr = fmt.Sprintf("%s%s%s", itemsStyle, itemsStr, ansi.Reset)
+	nDirsStr := fmt.Sprintf("%d", nDirs)
+	length := len(nDirsStr) + 1
+	nDirsStr = fmt.Sprintf("%s%s%s%s", itemsStyle, nDirsStr, DirIcon, ansi.Reset)
 
-	return itemsStr, length
+	return nDirsStr, length
+}
+
+func nFilesToString(nFiles int) (string, int) {
+	if nFiles == 0 {
+		return "", 0
+	}
+
+	nFilesStr := fmt.Sprintf("%d", nFiles)
+	length := len(nFilesStr) + 1
+	nFilesStr = fmt.Sprintf("%s%s%s%s", itemsStyle, nFilesStr, FileIcon, ansi.Reset)
+
+	return nFilesStr, length
 }
 
 func sizeToString(size int64) (string, int) {

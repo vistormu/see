@@ -12,7 +12,7 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
 <!-- [![Go report][go_report_img]][go_report_url] -->
 <!-- [![License][repo_license_img]][repo_license_url] -->
 
-<a href="https://github.com/vistormu/see" target="_blank" title=""><img width="99%" alt="see command" src=""></a>
+<a href="https://github.com/vistormu/see" target="_blank" title=""><img width="99%" alt="see command" src="/docs/screenshot.png"></a>
 
 </div>
 
@@ -26,21 +26,10 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
 
 ## 🌟 stargazers
 
-[![Stargazers over time](https://starchart.cc/gowebly/gowebly.svg?variant=adaptive)](https://starchart.cc/gowebly/gowebly)
+[![Stargazers over time](https://starchart.cc/vistormu/see.svg?variant=adaptive)](https://starchart.cc/vistormu/see)
 
 <div align="right">
 
 [&nwarr; Back to top](#readme-top)
 
 </div>
-
-<!-- Go links -->
-
-[go_url]: https://go.dev
-[go_download_url]: https://golang.org/dl/
-[go_run_url]: https://pkg.go.dev/cmd/go#hdr-Compile_and_run_Go_program
-[go_install_url]: https://golang.org/cmd/go/#hdr-Compile_and_install_packages_and_dependencies
-[go_report_url]: https://goreportcard.com/report/github.com/gowebly/gowebly/v3
-[go_report_img]: https://img.shields.io/badge/Go_report-A+-success?style=for-the-badge&logo=none
-[go_dev_url]: https://pkg.go.dev/github.com/gowebly/gowebly/v3
-[go_version_img]: https://img.shields.io/badge/Go-1.24+-00ADD8?style=for-the-badge&logo=go

@@ -102,22 +102,31 @@ func printDirectoryListing(root *builder.Directory) error {
 	dirsColumn := createDirsColumn(root)
 	sizeColumn := createSizeColumn(root)
 
-	lines := make([]string, 0)
-	freeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
-	freeSpace += 2 // account for the two extra spaces between columns
+	fullFreeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
+	fullFreeSpace -= 3 // account for the two extra spaces between columns
+
+	halfFreeSpace := termWidth/2 - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
+
+	freeSpace := halfFreeSpace
+
 	spaces := repeat(" ", freeSpace)
 
+	lines := make([]string, 0)
 	// header
-	// line := fmt.Sprintf("%s%s%s%s",
-	// 	repeat(".", treeColumn.maxLength)+repeat("-", freeSpace),
-	// 	ansi.Underline,
-	// 	"items"+repeat(" ", (filesColumn.maxLength+dirsColumn.maxLength)-len("items")),
-	// 	ansi.Reset,
-	// )
-	// lines = append(lines, line)
+	line := fmt.Sprintf("%s%s%s%s%s%s%s%s",
+		repeat(" ", treeColumn.maxLength+freeSpace),
+		ansi.Underline,
+		repeat(" ", (filesColumn.maxLength+dirsColumn.maxLength)-len("items")+1)+"items",
+		ansi.Reset,
+		repeat(" ", 2),
+		ansi.Underline,
+		repeat(" ", sizeColumn.maxLength-len("size"))+"size",
+		ansi.Reset,
+	)
+	lines = append(lines, line)
 
 	// root
-	line := fmt.Sprintf("%s%s%s",
+	line = fmt.Sprintf("%s%s%s",
 		treeColumn.root.git,
 		treeColumn.root.name,
 		repeat(" ", treeColumn.maxLength-treeColumn.root.length),
@@ -141,11 +150,11 @@ func printDirectoryListing(root *builder.Directory) error {
 		dirsColumn.root.dirs,
 	)
 
-	line += " "
+	line += "  "
 
 	// size
 	line += fmt.Sprintf("%s%s",
-		repeat(".", sizeColumn.maxLength-sizeColumn.root.length),
+		repeat(" ", sizeColumn.maxLength-sizeColumn.root.length),
 		sizeColumn.root.size,
 	)
 
@@ -178,7 +187,7 @@ func printDirectoryListing(root *builder.Directory) error {
 			dirsColumn.items[i].dirs,
 		)
 
-		line += " "
+		line += "  "
 
 		// size column
 		line += fmt.Sprintf("%s%s",
@@ -209,7 +218,7 @@ func printDirectoryListing(root *builder.Directory) error {
 		// dirs column
 		line += repeat(" ", dirsColumn.maxLength)
 
-		line += " "
+		line += "  "
 
 		// size column
 		line += fmt.Sprintf("%s%s",
@@ -229,16 +238,12 @@ func createTreeColumn(root *builder.Directory) treeColumn {
 	// root
 	// git status
 	rootGitStatus, rootGitStatusLength := gitStatusToString(root.GitStatus)
-	if rootGitStatusLength != 0 {
-		rootGitStatus += " "
-		rootGitStatusLength += 1 // account for the space after the git status
-	}
 
 	// dir name
 	rootName, rootNameLength := dirNameToString(root.Name, true)
 
 	// length
-	rootLength := rootGitStatusLength + rootNameLength + 4 // account that there is no divider for the root
+	rootLength := rootGitStatusLength + rootNameLength
 	maxLength := rootLength
 
 	// dirs
@@ -249,14 +254,10 @@ func createTreeColumn(root *builder.Directory) treeColumn {
 		if i == len(root.Dirs)-1 && len(root.Files) == 0 {
 			divider = treeEnd
 		}
-		dividerLength := len(divider)
+		dividerLength := 3
 
 		// git status
 		dirGitStatus, dirGitStatusLength := gitStatusToString(dir.GitStatus)
-		if dirGitStatusLength != 0 {
-			dirGitStatus += " "
-			dirGitStatusLength += 1 // account for the space after the git status
-		}
 
 		// name
 		dirName, dirNameLength := dirNameToString(dir.Name, false)
@@ -281,7 +282,7 @@ func createTreeColumn(root *builder.Directory) treeColumn {
 		if i == len(root.Files)-1 {
 			divider = treeEnd
 		}
-		dividerLength := len(divider)
+		dividerLength := 3
 
 		// icon
 		icon, iconLength := iconToString(file.Name)
@@ -435,8 +436,8 @@ func gitStatusToString(status builder.GitStatus) (string, int) {
 		return "", 0
 	}
 
-	str := fmt.Sprintf("%s%s%s", gitColor, GitIcon, ansi.Reset)
-	length := 1
+	str := fmt.Sprintf("%s%s%s ", gitColor, GitIcon, ansi.Reset)
+	length := 2
 
 	return str, length
 }

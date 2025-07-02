@@ -1,6 +1,6 @@
 project_name := see
 dist_dir := dist
-version := 0.2.0
+version := 0.0.1
 
 
 .SILENT:
@@ -9,8 +9,8 @@ version := 0.2.0
 
 build:
 	# linux
-	GOOS=linux GOARCH=arm64 go build -o $(dist_dir)/$(project_name)_arm64 main.go
-	GOOS=linux GOARCH=amd64 go build -o $(dist_dir)/$(project_name)_amd64 main.go
+	GOOS=linux GOARCH=arm64 go build -o $(dist_dir)/$(project_name)_linux_arm64 main.go
+	GOOS=linux GOARCH=amd64 go build -o $(dist_dir)/$(project_name)_linux_amd64 main.go
 
 	# darwin
 	GOOS=darwin GOARCH=arm64 go build -o $(dist_dir)/$(project_name)_darwin_arm64 main.go
@@ -22,6 +22,10 @@ upload:
 	git tag -a $(version) -m "release $(version)"
 	git push origin main
 	git push origin --tags
+
+install:
+	sudo cp $(dist_dir)/$(project_name)_darwin_arm64 /usr/local/bin/$(project_name)
+	sudo chmod +x /usr/local/bin/$(project_name)
 
 clean:
 	rm -rf $(dist_dir)

@@ -7,18 +7,22 @@ version := 0.0.4
 
 build: clean
 	# linux
-	GOOS=linux GOARCH=arm64 go build -o $(dist_dir)/$(project_name)_linux_arm64 main.go
-	tar -czf $(dist_dir)/$(project_name)_$(version)_linux_arm64.tar.gz -C $(dist_dir) $(project_name)_linux_arm64
+	GOOS=linux GOARCH=arm64 go build -o $(dist_dir)/$(project_name)
+	tar -czf $(dist_dir)/$(project_name)_$(version)_linux_arm64.tar.gz -C $(dist_dir) $(project_name)
+	mv $(dist_dir)/$(project_name) $(dist_dir)/$(project_name)_linux_arm64
 
-	GOOS=linux GOARCH=amd64 go build -o $(dist_dir)/$(project_name)_linux_amd64 main.go
-	tar -czf $(dist_dir)/$(project_name)_$(version)_linux_amd64.tar.gz -C $(dist_dir) $(project_name)_linux_amd64
+	GOOS=linux GOARCH=amd64 go build -o $(dist_dir)/$(project_name)
+	tar -czf $(dist_dir)/$(project_name)_$(version)_linux_amd64.tar.gz -C $(dist_dir) $(project_name)
+	mv $(dist_dir)/$(project_name) $(dist_dir)/$(project_name)_linux_amd64
 
 	# darwin
-	GOOS=darwin GOARCH=arm64 go build -o $(dist_dir)/$(project_name)_darwin_arm64 main.go
-	tar -czf $(dist_dir)/$(project_name)_$(version)_darwin_arm64.tar.gz -C $(dist_dir) $(project_name)_darwin_arm64
+	GOOS=darwin GOARCH=arm64 go build -o $(dist_dir)/$(project_name)
+	tar -czf $(dist_dir)/$(project_name)_$(version)_darwin_arm64.tar.gz -C $(dist_dir) $(project_name)
+	mv $(dist_dir)/$(project_name) $(dist_dir)/$(project_name)_darwin_arm64
 
-	GOOS=darwin GOARCH=amd64 go build -o $(dist_dir)/$(project_name)_darwin_amd64 main.go
-	tar -czf $(dist_dir)/$(project_name)_$(version)_darwin_amd64.tar.gz -C $(dist_dir) $(project_name)_darwin_amd64
+	GOOS=darwin GOARCH=amd64 go build -o $(dist_dir)/$(project_name)
+	tar -czf $(dist_dir)/$(project_name)_$(version)_darwin_amd64.tar.gz -C $(dist_dir) $(project_name)
+	mv $(dist_dir)/$(project_name) $(dist_dir)/$(project_name)_darwin_amd64
 
 
 upload: build

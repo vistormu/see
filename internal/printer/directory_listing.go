@@ -102,8 +102,8 @@ func printDirectoryListing(root *builder.Directory) error {
 	dirsColumn := createDirsColumn(root)
 	sizeColumn := createSizeColumn(root)
 
-	fullFreeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
-	fullFreeSpace -= 3 // account for the two extra spaces between columns
+	// fullFreeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
+	// fullFreeSpace -= 3 // account for the two extra spaces between columns
 
 	halfFreeSpace := termWidth/2 - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
 

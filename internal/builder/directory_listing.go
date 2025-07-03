@@ -2,16 +2,14 @@ package builder
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/vistormu/go-dsa/errors"
 )
 
 func getGitStatus(path string) GitStatus {
-	// check if the directory is a git repository
 	gitDir := filepath.Join(path, ".git")
 	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
 		return GitUnknown
@@ -35,89 +33,90 @@ func getGitStatus(path string) GitStatus {
 	return GitModified
 }
 
-func buildDirectoryTree(rootPath string, depth int) (*Directory, error) {
-	if depth < 0 {
-		return nil, errors.New("depth cannot be negative")
-	}
-
-	absPath, err := filepath.Abs(rootPath)
+func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
+	rootAbs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
 	}
 
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return nil, err
+	// map absolute dir path → *Directory nodes for depth ≤ maxDepth
+	dirMap := map[string]*Directory{}
+	rootDir := &Directory{
+		Name:      filepath.Base(rootAbs),
+		Path:      rootAbs,
+		GitStatus: getGitStatus(rootAbs),
 	}
+	dirMap[rootAbs] = rootDir
 
-	dir := &Directory{
-		Name:      info.Name(),
-		Path:      absPath,
-		Dirs:      []*Directory{},
-		Files:     []File{},
-		GitStatus: getGitStatus(absPath),
-		Size:      0,
-	}
-
-	entries, err := os.ReadDir(rootPath)
-	if err != nil {
-		return nil, errors.New("error reading directory").With("path", rootPath).Wrap(err)
-	}
-
-	var totalSize int64
-
-	for _, entry := range entries {
-		entryPath := filepath.Join(rootPath, entry.Name())
-		entryInfo, err := entry.Info()
-		if err != nil {
-			continue // Ignore errors for entries
+	err = filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, wErr error) error {
+		if wErr != nil {
+			return nil
+		}
+		if path == rootAbs {
+			return nil
 		}
 
-		// If depth is greater than 0, explore subdirectories
-		if entry.IsDir() && depth > 0 {
-			// Recursive call with depth - 1 to prevent further recursion beyond the desired depth
-			subDir, err := buildDirectoryTree(entryPath, depth-1)
-			if err != nil {
-				continue // Ignore errors for subdirectories
+		// compute depth relative to root
+		rel, _ := filepath.Rel(rootAbs, path)
+		depth := len(strings.Split(rel, string(os.PathSeparator)))
+
+		if d.IsDir() {
+			// if within depth limit, create node & link to parent
+			if depth <= maxDepth {
+				dir := &Directory{
+					Name:      d.Name(),
+					Path:      path,
+					GitStatus: getGitStatus(path),
+				}
+				dirMap[path] = dir
+				parent := dirMap[filepath.Dir(path)]
+				parent.Dirs = append(parent.Dirs, dir)
 			}
-			dir.Dirs = append(dir.Dirs, subDir)
-			totalSize += subDir.Size
-			continue
+			// always return nil so we still traverse contents for size
+			return nil
 		}
 
-		// Add file to files list if it's a file (not a directory)
-		if !entry.IsDir() {
-			dir.Files = append(dir.Files, File{
-				Name: entry.Name(),
-				Path: entryPath,
-				Size: entryInfo.Size(),
-			})
-			totalSize += entryInfo.Size()
+		// it's a file: get its size
+		info, err := d.Info()
+		if err != nil {
+			return err
 		}
-	}
+		size := info.Size()
+		f := File{
+			Name: d.Name(),
+			Path: path,
+			Size: size,
+		}
 
-	dir.Size = totalSize
-	return dir, nil
+		parentPath := filepath.Dir(path)
+		// if the file's parent is in our tree, record it
+		if pd, ok := dirMap[parentPath]; ok {
+			pd.Files = append(pd.Files, f)
+		}
+
+		// propagate this file's size up to every ancestor in dirMap
+		for p := parentPath; ; {
+			if dd, exists := dirMap[p]; exists {
+				dd.Size += size
+			}
+			if p == rootAbs {
+				break
+			}
+			p = filepath.Dir(p)
+		}
+
+		return nil
+	})
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	return rootDir, nil
 }
 
-func buildDirectoryListing(args map[string]any) (*Directory, error) {
-	// dir
-	root, ok := args["dir"].(string)
-	if !ok || root == "" {
-		root = "."
-	}
-
-	// depth
-	depth, ok := args["--depth"].(int)
-	if !ok || depth < 0 {
-		return nil, errors.New(WrongArg).With("arg", "--depth").With("value", args["--depth"]).With("message", "depth must be a non-negative integer")
-	}
-
-	// sort by
-	// sortBy, ok := args["--sort-by"].(string)
-
+func buildDirectoryListing(args Args) (*Directory, error) {
 	// build info
-	rootInfo, err := buildDirectoryTree(root, depth)
+	rootInfo, err := buildDirectoryTree(args.Element, args.Depth)
 	if err != nil {
 		return nil, err
 	}

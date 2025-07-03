@@ -13,32 +13,29 @@ type FileContent struct {
 	NLines  int
 }
 
-func buildFileContent(args map[string]any) (*FileContent, error) {
-	// file
-	filePath, ok := args["file"].(string)
-	if !ok || filePath == "" {
-		return nil, errors.New(NotImplemented)
-	}
-
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		return nil, errors.New(FileNotFound).With("file", filePath).Wrap(err)
-	}
-
+func buildFileContent(args Args) (*FileContent, error) {
 	// content
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(args.Element)
 	if err != nil {
-		return nil, errors.New(FileNotFound).With("file", filePath).Wrap(err)
+		return nil, errors.New(FileNotFound).With("file", args.Element).Wrap(err)
 	}
 	contentStr := string(content)
+	contentStr = strings.ReplaceAll(contentStr, "\t", "    ")
+	contentStr = strings.TrimRight(contentStr, "\n")
+
+	// info
+	fileInfo, err := os.Stat(args.Element)
+	if err != nil {
+		return nil, errors.New(FileInfo).With("path", args.Element).Wrap(err)
+	}
 
 	// number of lines
-	nLines := strings.Count(contentStr, "\n")
+	nLines := strings.Count(contentStr, "\n") + 1
 
 	return &FileContent{
 		File: &File{
 			Name: fileInfo.Name(),
-			Path: filePath,
+			Path: args.Element,
 			Size: fileInfo.Size(),
 		},
 		Content: contentStr,

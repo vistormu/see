@@ -2,18 +2,21 @@ package printer
 
 import (
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 
 	"see/internal/builder"
 
 	"github.com/epilande/go-devicons"
 	"github.com/vistormu/go-dsa/ansi"
+	"github.com/vistormu/go-dsa/errors"
 )
 
 // ====
 // init
 // ====
-var hiddenStyle = ansi.Dim + ansi.Rgb(128, 128, 128)
+var hiddenStyle = ansi.Dim + ansi.Rgb(150, 150, 150)
 
 const (
 	treeMiddle   = TreeBranch + TreeHLine + " "
@@ -96,7 +99,23 @@ type sizeColumn struct {
 // =====
 // print
 // =====
-func printDirectoryListing(root *builder.Directory) error {
+func printDirectoryListing(root *builder.Directory, args builder.Args) error {
+	// sort
+	sorters := map[string]func(*builder.Directory){
+		"name":       sortByName,
+		"kind":       sortByKind,
+		"size":       sortBySize,
+		"git-status": sortByGitStatus,
+		// "date":       sortByDate,
+	}
+	sorter, ok := sorters[args.Sort]
+	if !ok {
+		return errors.New(InvalidArgs).With("sort", args.Sort)
+	}
+
+	sorter(root)
+
+	// print
 	treeColumn := createTreeColumn(root)
 	filesColumn := createFilesColumn(root)
 	dirsColumn := createDirsColumn(root)
@@ -163,7 +182,7 @@ func printDirectoryListing(root *builder.Directory) error {
 	// dirs
 	for i := range treeColumn.dirs {
 		// tree column
-		line := fmt.Sprintf("%s%s%s%s",
+		line = fmt.Sprintf("%s%s%s%s",
 			treeColumn.dirs[i].divider,
 			treeColumn.dirs[i].git,
 			treeColumn.dirs[i].name,
@@ -229,7 +248,16 @@ func printDirectoryListing(root *builder.Directory) error {
 		lines = append(lines, line)
 	}
 
-	fmt.Println(strings.Join(lines, "\n") + "\n")
+	columnLine := lines[0]
+	rootLine := lines[1]
+	content := strings.Join(lines[2:], "\n")
+
+	if args.Filter != "" {
+		content = filterLines(content, args.Filter)
+		content = strings.TrimRight(content, "\n")
+	}
+
+	fmt.Printf("%s\n%s\n%s\n\n", columnLine, rootLine, content)
 
 	return nil
 }
@@ -521,3 +549,105 @@ func fileNameToString(name string) (string, int) {
 
 	return nameStr, length
 }
+
+// ====
+// sort
+// ====
+func sortByName(root *builder.Directory) {
+	sort.SliceStable(root.Dirs, func(i, j int) bool {
+		return strings.ToLower(root.Dirs[i].Name) < strings.ToLower(root.Dirs[j].Name)
+	})
+
+	sort.SliceStable(root.Files, func(i, j int) bool {
+		return strings.ToLower(root.Files[i].Name) < strings.ToLower(root.Files[j].Name)
+	})
+
+	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+
+	slices.SortFunc(root.Files, func(a, b builder.File) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+}
+
+func sortByKind(root *builder.Directory) {
+	sort.SliceStable(root.Dirs, func(i, j int) bool {
+		return root.Dirs[i].Name < root.Dirs[j].Name
+	})
+
+	sort.SliceStable(root.Files, func(i, j int) bool {
+		return root.Files[i].Name < root.Files[j].Name
+	})
+
+	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	slices.SortFunc(root.Files, func(a, b builder.File) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+}
+
+func sortBySize(root *builder.Directory) {
+	sort.SliceStable(root.Dirs, func(i, j int) bool {
+		return root.Dirs[i].Size < root.Dirs[j].Size
+	})
+
+	sort.SliceStable(root.Files, func(i, j int) bool {
+		return root.Files[i].Size < root.Files[j].Size
+	})
+
+	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
+		if a.Size < b.Size {
+			return -1
+		} else if a.Size > b.Size {
+			return 1
+		}
+		return 0
+	})
+
+	slices.SortFunc(root.Files, func(a, b builder.File) int {
+		if a.Size < b.Size {
+			return -1
+		} else if a.Size > b.Size {
+			return 1
+		}
+		return 0
+	})
+}
+
+func sortByGitStatus(root *builder.Directory) {
+	gitStatusOrder := map[builder.GitStatus]int{
+		builder.GitUnknown:   0,
+		builder.GitUpToDate:  1,
+		builder.GitUntracked: 2,
+		builder.GitModified:  3,
+	}
+
+	sort.SliceStable(root.Dirs, func(i, j int) bool {
+		return gitStatusOrder[root.Dirs[i].GitStatus] < gitStatusOrder[root.Dirs[j].GitStatus]
+	})
+
+	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
+		return gitStatusOrder[a.GitStatus] - gitStatusOrder[b.GitStatus]
+	})
+}
+
+// func sortByDate(root *builder.Directory) {
+// 	sort.SliceStable(root.Dirs, func(i, j int) bool {
+// 		return root.Dirs[i].ModTime.Before(root.Dirs[j].ModTime)
+// 	})
+
+// 	sort.SliceStable(root.Files, func(i, j int) bool {
+// 		return root.Files[i].ModTime.Before(root.Files[j].ModTime)
+// 	})
+
+// 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
+// 		return a.ModTime.Compare(b.ModTime)
+// 	})
+
+// 	slices.SortFunc(root.Files, func(a, b builder.File) int {
+// 		return a.ModTime.Compare(b.ModTime)
+// 	})
+// }

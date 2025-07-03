@@ -17,13 +17,13 @@ func init() {
 	}
 }
 
-func Print(command any) error {
-	switch command.(type) {
+func Print(command any, args builder.Args) error {
+	switch cmd := command.(type) {
 	case *builder.Directory:
-		return printDirectoryListing(command.(*builder.Directory))
+		return printDirectoryListing(cmd, args)
 
 	case *builder.FileContent:
-		return printFileContent(command.(*builder.FileContent))
+		return printFileContent(cmd, args)
 	}
 
 	return nil

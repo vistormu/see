@@ -5,14 +5,17 @@
 <a href="https://github.com/vistormu/see" target="_blank" title="go to the repo"><img width="196px" alt="see logo" src="/docs/logo.svg"></a>
 
 
-# see
-# a better way to visualize your file system
+# see<br>a better way to visualize your file system
 
 _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-friendly output, with a focus on `git` repositories.
 
+<br>
+
 [![go version][go_version_img]][go_dev_url]
-[![Go report][go_report_img]][go_report_url]
+<!-- [![Go report][go_report_img]][go_report_url] -->
 [![License][repo_license_img]][repo_license_url]
+
+<br>
 
 <a href="https://github.com/vistormu/see" target="_blank" title=""><img width="99%" alt="see command" src="/docs/ls.png"></a>
 
@@ -30,7 +33,8 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
     - green means the repository is clean
     - yellow means there are uncommitted changes
     - red means there are uncommitted changes and untracked files
-- if `zoxide` is installed, WIP
+- if `zoxide` is installed, _see_ will use it to resolve the path 
+- shows hidden files and directories by default
 
 ## ⚡️ quick start
 
@@ -49,36 +53,35 @@ see <path>
 to see the content of a specific path or file.
 
 
-### flags
+## 🚩 flags
 
 | flag | description | status |
 | --- | --- | --- |
-| `-h`, `--help` | show help | ❌ |
-| `-v`, `--version` | show version | ❌ |
-| `-f`, `--filter` | filter the output by a specific string (e.g. `see -f .txt`) | ❌ |
+| `-h`, `--help` | show help | ✅ |
+| `-v`, `--version` | show version | ✅ |
+| `-f`, `--filter` | filter the output by a specific string (e.g. `see -f .txt`) | ✅ |
 | `-d`, `--depth` | set the depth of the tree (default: 1) | ❌ |
-| `-s`, `--sort` | sort files by name, kind, size, git status, or date (default: name) | ❌ |
+| `-s`, `--sort` | sort files by name, kind, size, git status, or date (default: name) | ✅ |
 | `-n`, `--nerd` | show all possible information about the tree | ❌ |
-
-<!-- ✅ -->
 
 ## 🚀 installation
 
 ### homebrew
 
-> [!WARNING]
-> not implemented
-
-if you have [homebrew](https://brew.sh/) installed, you can tap the formula
+if you have [homebrew](https://brew.sh/) installed, you can tap and install the formula
 
 ```bash
-brew tap vistormu/see
+brew tap vistormu/see/see
 ```
 
-and then install _see_ with the following command:
+### from releases
+
+check the [releases](https://github.com/vistormu/see/releases) page and download the latest version for your operating system.
+
+unzip the file and move the binary to a directory in your `PATH`, for example:
 
 ```bash
-brew install vistormu/see
+mv see /usr/local/bin/
 ```
 
 ### using go

@@ -54,7 +54,7 @@ func addLineNumbers(src string) string {
 	var buf bytes.Buffer
 	buf.Grow(len(src) + len(lines)*width + len(lines)*3) // simple capacity guess
 
-	format := "%*" + "d │ " // e.g. "%3d │ "
+	format := hiddenStyle + "%*" + "d │ " + ansi.Reset
 	for i, line := range lines {
 		buf.WriteString(fmt.Sprintf(format, width, i+1))
 		buf.WriteString(line)
@@ -66,7 +66,7 @@ func addLineNumbers(src string) string {
 	return buf.String()
 }
 
-func printFileContent(fileContent *builder.FileContent) error {
+func printFileContent(fileContent *builder.FileContent, args builder.Args) error {
 	name := fmt.Sprintf("%s%s%s%s",
 		ansi.Bold,
 		ansi.Green,
@@ -107,12 +107,18 @@ func printFileContent(fileContent *builder.FileContent) error {
 	spaces := repeat(" ", freeSpace)
 
 	// final touches
-	content := strings.ReplaceAll(fileContent.Content, "\t", "    ")
+	content := fileContent.Content
 	hlContent, err := highlight(fileContent.File.Path, content, "catppuccin-mocha")
 	if err == nil {
 		content = hlContent
 	}
 	content = addLineNumbers(content)
+
+	// filter
+	if args.Filter != "" {
+		content = filterLines(content, args.Filter)
+		content = strings.TrimRight(content, "\n")
+	}
 
 	fmt.Printf("%s%s%s%s\n\n%s\n\n",
 		name,

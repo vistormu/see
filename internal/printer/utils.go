@@ -1,7 +1,9 @@
 package printer
 
 import (
+	"bufio"
 	"fmt"
+	"strings"
 )
 
 func humanizeSize(size int64) string {
@@ -26,4 +28,19 @@ func repeat(s string, count int) string {
 		result[i] = s[i%len(s)]
 	}
 	return string(result)
+}
+
+func filterLines(content, keyword string) string {
+	var b strings.Builder
+	scanner := bufio.NewScanner(strings.NewReader(content))
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, keyword) {
+			b.WriteString(line)
+			b.WriteByte('\n')
+		}
+	}
+
+	return b.String()
 }

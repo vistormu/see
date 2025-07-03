@@ -5,5 +5,6 @@ import (
 )
 
 const (
-	TermSize errors.ErrorType = "terminal size error"
+	TermSize    errors.ErrorType = "terminal size error"
+	InvalidArgs errors.ErrorType = "invalid arguments error"
 )

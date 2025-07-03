@@ -70,7 +70,7 @@ to see the content of a specific path or file.
 if you have [homebrew](https://brew.sh/) installed, you can tap and install the formula
 
 ```bash
-brew tap vistormu/see/see
+brew install vistormu/see/see
 ```
 
 ### from releases

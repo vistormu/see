@@ -12,13 +12,12 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
 <br>
 
 [![go version][go_version_img]][go_dev_url]
-<!-- [![Go report][go_report_img]][go_report_url] -->
 [![License][repo_license_img]][repo_license_url]
+<!-- [![Go report][go_report_img]][go_report_url] -->
 
 <br>
 
 <a href="https://github.com/vistormu/see" target="_blank" title=""><img width="99%" alt="see command" src="/docs/ls.png"></a>
-
 <a href="https://github.com/vistormu/see" target="_blank" title=""><img width="99%" alt="see command" src="/docs/cat.png"></a>
 
 </div>

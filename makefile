@@ -1,6 +1,6 @@
 project_name := see
 dist_dir := dist
-version := 0.0.4
+version := 0.0.5
 
 
 .PHONY: build upload install clean

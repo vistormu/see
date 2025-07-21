@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	Version = "0.0.3"
+	Version = "0.0.5"
 	seeName = ansi.Bold + ansi.Italic + ansi.Magenta + "see" + ansi.Reset
 )
 
@@ -128,7 +128,6 @@ func init() {
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }

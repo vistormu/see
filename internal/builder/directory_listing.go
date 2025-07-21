@@ -48,7 +48,7 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 	}
 	dirMap[rootAbs] = rootDir
 
-	err = filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, wErr error) error {
+	filepath.WalkDir(rootAbs, func(path string, d fs.DirEntry, wErr error) error {
 		if wErr != nil {
 			return nil
 		}
@@ -61,18 +61,20 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 		depth := len(strings.Split(rel, string(os.PathSeparator)))
 
 		if d.IsDir() {
-			// if within depth limit, create node & link to parent
-			if depth <= maxDepth {
-				dir := &Directory{
-					Name:      d.Name(),
-					Path:      path,
-					GitStatus: getGitStatus(path),
-				}
-				dirMap[path] = dir
-				parent := dirMap[filepath.Dir(path)]
-				parent.Dirs = append(parent.Dirs, dir)
+			// if we hit the max depth, skip this directory
+			if depth > maxDepth {
+				return fs.SkipDir
 			}
-			// always return nil so we still traverse contents for size
+
+			dir := &Directory{
+				Name:      d.Name(),
+				Path:      path,
+				GitStatus: getGitStatus(path),
+			}
+			dirMap[path] = dir
+			parent := dirMap[filepath.Dir(path)]
+			parent.Dirs = append(parent.Dirs, dir)
+
 			return nil
 		}
 
@@ -89,27 +91,22 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 		}
 
 		parentPath := filepath.Dir(path)
-		// if the file's parent is in our tree, record it
 		if pd, ok := dirMap[parentPath]; ok {
 			pd.Files = append(pd.Files, f)
-		}
-
-		// propagate this file's size up to every ancestor in dirMap
-		for p := parentPath; ; {
-			if dd, exists := dirMap[p]; exists {
-				dd.Size += size
+			// propagate this file’s size up to all ancestors in dirMap
+			for p := parentPath; ; {
+				if dd, exists := dirMap[p]; exists {
+					dd.Size += size
+				}
+				if p == rootAbs {
+					break
+				}
+				p = filepath.Dir(p)
 			}
-			if p == rootAbs {
-				break
-			}
-			p = filepath.Dir(p)
 		}
 
 		return nil
 	})
-	// if err != nil {
-	// 	return nil, err
-	// }
 
 	return rootDir, nil
 }

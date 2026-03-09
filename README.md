@@ -7,7 +7,7 @@
 
 # see<br>a better way to visualize your file system
 
-_see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-friendly output, with a focus on `git` repositories.
+_see_ is the replacement of `ls`, `tree`, `cat`, and `echo <$VAR>` commands with a more user-friendly output, with a focus on `git` repositories.
 
 <br>
 
@@ -22,10 +22,7 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
 
 </div>
 
-> [!WARNING]
-> this project is functional but still in development, so expect some bugs and missing features
-
-## ✨ features
+## features
 
 - colorful and pretty output
 - permission bits are shown by default in directory tables
@@ -36,7 +33,7 @@ _see_ is the replacement of `ls`, `tree`, and `cat` commands with a more user-fr
 - if `zoxide` is installed, _see_ will use it to resolve the path 
 - shows hidden files and directories by default
 
-## ⚡️ quick start
+## quick start
 
 just type
 
@@ -59,21 +56,20 @@ see $HOME
 ```
 
 
-## 🚩 flags
+## flags
 
-| flag | description | status |
-| --- | --- | --- |
-| `-h`, `--help` | show help | ✅ |
-| `-v`, `--version` | show version | ✅ |
-| `-f`, `--filter` | filter the output by a specific string (e.g. `see -f .txt`) | ✅ |
-| `-d`, `--depth` | set the depth of the tree (default: 1, `0` means unlimited) | ✅ |
-| `-s`, `--sort` | sort files by name, kind, size, git status, or date (default: name) | ✅ |
-| `-n`, `--nerd` | show all possible information about the tree | ❌ |
-| `-H`, `--head` | show the first N lines when reading file content | ✅ |
-| `-t`, `--tail` | show the last N lines when reading file content | ✅ |
-| `-c`, `--copy` | copy rendered output content to clipboard | ✅ |
+| flag | description |
+| --- | --- |
+| `-h`, `--help` | show help |
+| `-v`, `--version` | show version |
+| `-f`, `--filter` | filter the output by a specific string (e.g. `see -f .txt`) |
+| `-d`, `--depth` | set the depth of the tree (default: 1, `0` means unlimited) |
+| `-s`, `--sort` | sort files by name, kind, size, git status, or date (default: name) |
+| `-H`, `--head` | show the first N lines when reading file content |
+| `-t`, `--tail` | show the last N lines when reading file content |
+| `-c`, `--copy` | copy rendered output content to clipboard |
 
-## 🚀 installation
+## installation
 
 ### homebrew
 
@@ -123,29 +119,6 @@ go build -o see
 ```bash
 mv see /usr/local/bin/
 ```
-
-## 📦 release automation
-
-releases are automated from git tags through [`.github/workflows/release.yml`](.github/workflows/release.yml):
-
-1. builds `linux/darwin` binaries for `arm64/amd64`
-2. uploads tarballs to the GitHub release
-3. computes all `sha256` values
-4. updates `vistormu/homebrew-see` (`Formula/see.rb`) and pushes it
-
-### one-time setup
-
-in `vistormu/see` repository secrets, add:
-
-- `HOMEBREW_TAP_TOKEN`: a GitHub token with write access to `vistormu/homebrew-see`
-
-### release command
-
-```bash
-make release VERSION=0.0.6
-```
-
-this pushes tag `v0.0.6` and the workflow completes the rest.
 
 ## 🌟 stargazers
 

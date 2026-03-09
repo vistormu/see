@@ -13,6 +13,7 @@ import (
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	xansi "github.com/charmbracelet/x/ansi"
 	"github.com/vistormu/go-dsa/ansi"
 )
 
@@ -30,7 +31,7 @@ func highlight(path, content, styleName string) (string, error) {
 
 	formatter := formatters.TTY16m
 
-	iterator, err := lexer.Tokenise(nil, string(content))
+	iterator, err := lexer.Tokenise(nil, content)
 	if err != nil {
 		return "", err
 	}
@@ -43,20 +44,20 @@ func highlight(path, content, styleName string) (string, error) {
 	return buf.String(), nil
 }
 
-func addLineNumbers(src string) string {
+func addLineNumbers(src string, start int) string {
 	if src == "" {
 		return src
 	}
 
 	lines := strings.Split(src, "\n")
-	width := len(strconv.Itoa(len(lines)))
+	width := len(strconv.Itoa(start + len(lines) - 1))
 
 	var buf bytes.Buffer
-	buf.Grow(len(src) + len(lines)*width + len(lines)*3) // simple capacity guess
+	buf.Grow(len(src) + len(lines)*(width+4))
 
 	format := hiddenStyle + "%*" + "d │ " + ansi.Reset
 	for i, line := range lines {
-		buf.WriteString(fmt.Sprintf(format, width, i+1))
+		buf.WriteString(fmt.Sprintf(format, width, start+i))
 		buf.WriteString(line)
 
 		if i < len(lines)-1 {
@@ -66,67 +67,129 @@ func addLineNumbers(src string) string {
 	return buf.String()
 }
 
+func clampLineOption(value int) int {
+	if value < 0 {
+		return -1
+	}
+	return max(0, value)
+}
+
+func selectContentWindow(content string, head, tail int) (string, int) {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return "", 1
+	}
+
+	head = clampLineOption(head)
+	tail = clampLineOption(tail)
+
+	if head >= 0 {
+		if head < len(lines) {
+			lines = lines[:head]
+		}
+		return strings.Join(lines, "\n"), 1
+	}
+
+	if tail >= 0 {
+		start := max(0, len(lines)-tail)
+		return strings.Join(lines[start:], "\n"), start + 1
+	}
+
+	return content, 1
+}
+
+func buildFileHeader(fileContent *builder.FileContent, visibleLines int, lineWord string) string {
+	name := fmt.Sprintf("%s%s%s%s", ansi.Bold, ansi.Green, fileContent.File.Name, ansi.Reset)
+	size := fmt.Sprintf("%s%s%s", ansi.Magenta2, humanizeSize(fileContent.File.Size), ansi.Reset)
+	lines := fmt.Sprintf("%s%d %s%s", ansi.Yellow2, visibleLines, lineWord, ansi.Reset)
+
+	return name + "  " + lines + "  " + size
+}
+
+func framedContent(header, content string) string {
+	lines := strings.Split(content, "\n")
+
+	maxVisible := visibleWidth(header)
+	for _, line := range lines {
+		maxVisible = max(maxVisible, visibleWidth(line))
+	}
+
+	maxInner := termWidth - 4
+	if maxInner < 24 {
+		maxInner = 24
+	}
+	innerWidth := min(maxVisible, maxInner)
+	if innerWidth < 24 {
+		innerWidth = 24
+	}
+
+	wrappedLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		wrapped := xansi.Wrap(line, innerWidth, "")
+		parts := strings.Split(wrapped, "\n")
+		wrappedLines = append(wrappedLines, parts...)
+	}
+	if len(wrappedLines) == 0 {
+		wrappedLines = []string{""}
+	}
+
+	top := "┌" + repeat("─", innerWidth+2) + "┐"
+	mid := "├" + repeat("─", innerWidth+2) + "┤"
+	bottom := "└" + repeat("─", innerWidth+2) + "┘"
+
+	out := []string{
+		top,
+		"│ " + padRight(truncateWithEllipsis(header, innerWidth), innerWidth) + " │",
+		mid,
+	}
+	for _, line := range wrappedLines {
+		out = append(out, "│ "+padRight(line, innerWidth)+" │")
+	}
+	out = append(out, bottom)
+
+	return strings.Join(out, "\n")
+}
+
 func printFileContent(fileContent *builder.FileContent, args builder.Args) error {
-	name := fmt.Sprintf("%s%s%s%s",
-		ansi.Bold,
-		ansi.Green,
-		fileContent.File.Name,
-		ansi.Reset,
-	)
-	nameLength := len(fileContent.File.Name)
-
-	nLines := fmt.Sprintf("%s%d lines %s",
-		ansi.Yellow2,
-		fileContent.NLines,
-		ansi.Reset,
-	)
-	nLinesLength := len(fmt.Sprintf("%d lines ", fileContent.NLines))
-
-	size := fmt.Sprintf("%s%s%s",
-		ansi.Magenta2,
-		humanizeSize(fileContent.File.Size),
-		ansi.Reset,
-	)
-	nSizeLength := len(humanizeSize(fileContent.File.Size))
-
-	if fileContent.File.Size == 0 {
-		size = fmt.Sprintf("%s%s%s",
-			ansi.Red2,
-			"empty",
-			ansi.Reset,
-		)
-		nSizeLength = len("empty")
-		nLines = ""
-		nLinesLength = 0
-	}
-
-	halfFreeSpace := termWidth/2 - nameLength - nLinesLength - nSizeLength - 1
-
-	freeSpace := halfFreeSpace
-
-	spaces := repeat(" ", freeSpace)
-
-	// final touches
-	content := fileContent.Content
-	hlContent, err := highlight(fileContent.File.Path, content, "catppuccin-mocha")
-	if err == nil {
-		content = hlContent
-	}
-	content = addLineNumbers(content)
-
-	// filter
+	selected, startLine := selectContentWindow(fileContent.Content, args.Head, args.Tail)
 	if args.Filter != "" {
-		content = filterLines(content, args.Filter)
-		content = strings.TrimRight(content, "\n")
+		selected = filterLines(selected, args.Filter)
+		selected = strings.TrimRight(selected, "\n")
 	}
 
-	fmt.Printf("%s%s%s%s\n\n%s\n\n",
-		name,
-		spaces,
-		nLines,
-		size,
-		content,
-	)
+	visibleLines := 0
+	if selected != "" {
+		visibleLines = strings.Count(selected, "\n") + 1
+	}
+	lineWord := "lines"
+	if visibleLines == 1 {
+		lineWord = "line"
+	}
+
+	header := buildFileHeader(fileContent, visibleLines, lineWord)
+
+	copyContent := selected
+
+	content := selected
+	if content != "" {
+		hlContent, err := highlight(fileContent.File.Path, content, "catppuccin-mocha")
+		if err == nil {
+			content = hlContent
+		}
+		content = addLineNumbers(content, startLine)
+	}
+
+	if content == "" {
+		content = fmt.Sprintf("%s(empty)%s", hiddenStyle, ansi.Reset)
+	}
+
+	fmt.Printf("%s\n\n", framedContent(header, content))
+
+	if args.Copy {
+		if err := copyFn(copyContent); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

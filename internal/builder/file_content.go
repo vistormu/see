@@ -37,6 +37,7 @@ func buildFileContent(args Args) (*FileContent, error) {
 			Name: fileInfo.Name(),
 			Path: args.Element,
 			Size: fileInfo.Size(),
+			Mode: fileInfo.Mode(),
 		},
 		Content: contentStr,
 		NLines:  nLines,

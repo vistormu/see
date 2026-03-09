@@ -5,6 +5,7 @@ import (
 )
 
 const (
-	TermSize    errors.ErrorType = "terminal size error"
-	InvalidArgs errors.ErrorType = "invalid arguments error"
+	TermSize      errors.ErrorType = "terminal size error"
+	InvalidArgs   errors.ErrorType = "invalid arguments error"
+	ClipboardCopy errors.ErrorType = "clipboard copy error"
 )

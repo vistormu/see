@@ -39,12 +39,18 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 		return nil, err
 	}
 
+	rootInfo, err := os.Stat(rootAbs)
+	if err != nil {
+		return nil, err
+	}
+
 	// map absolute dir path → *Directory nodes for depth ≤ maxDepth
 	dirMap := map[string]*Directory{}
 	rootDir := &Directory{
 		Name:      filepath.Base(rootAbs),
 		Path:      rootAbs,
 		GitStatus: getGitStatus(rootAbs),
+		Mode:      rootInfo.Mode(),
 	}
 	dirMap[rootAbs] = rootDir
 
@@ -59,17 +65,26 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 		// compute depth relative to root
 		rel, _ := filepath.Rel(rootAbs, path)
 		depth := len(strings.Split(rel, string(os.PathSeparator)))
+		limitedDepth := maxDepth > 0
+
+		if limitedDepth && depth > maxDepth {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
 
 		if d.IsDir() {
-			// if we hit the max depth, skip this directory
-			if depth > maxDepth {
-				return fs.SkipDir
+			info, err := d.Info()
+			if err != nil {
+				return err
 			}
 
 			dir := &Directory{
 				Name:      d.Name(),
 				Path:      path,
 				GitStatus: getGitStatus(path),
+				Mode:      info.Mode(),
 			}
 			dirMap[path] = dir
 			parent := dirMap[filepath.Dir(path)]
@@ -88,6 +103,7 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 			Name: d.Name(),
 			Path: path,
 			Size: size,
+			Mode: info.Mode(),
 		}
 
 		parentPath := filepath.Dir(path)
@@ -112,8 +128,13 @@ func buildDirectoryTree(root string, maxDepth int) (*Directory, error) {
 }
 
 func buildDirectoryListing(args Args) (*Directory, error) {
+	metadataDepth := args.Depth
+	if metadataDepth > 0 {
+		metadataDepth++
+	}
+
 	// build info
-	rootInfo, err := buildDirectoryTree(args.Element, args.Depth)
+	rootInfo, err := buildDirectoryTree(args.Element, metadataDepth)
 	if err != nil {
 		return nil, err
 	}

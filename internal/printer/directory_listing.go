@@ -3,7 +3,7 @@ package printer
 import (
 	"fmt"
 	"slices"
-	"sort"
+	"strconv"
 	"strings"
 
 	"see/internal/builder"
@@ -13,100 +13,53 @@ import (
 	"github.com/vistormu/go-dsa/errors"
 )
 
-// ====
-// init
-// ====
 var hiddenStyle = ansi.Dim + ansi.Rgb(150, 150, 150)
 
 const (
-	treeMiddle   = TreeBranch + TreeHLine + " "
-	treeEnd      = TreeLeaf + TreeHLine + " "
-	rootDirStyle = ansi.Bold + ansi.Green
-	subDirStyle  = ansi.Bold + ansi.Blue
-	fileStyle    = ansi.Cyan2
-	itemsStyle   = ansi.Yellow
-	sizeStyle    = ansi.Magenta2
-	emptyStyle   = ansi.Red2
+	treeMiddle      = TreeBranch + TreeHLine + " "
+	treeEnd         = TreeLeaf + TreeHLine + " "
+	treeVerticalGap = TreeVLine + "  "
+	treeEmptyGap    = "   "
+	rootDirStyle    = ansi.Bold + ansi.Green
+	subDirStyle     = ansi.Bold + ansi.Blue
+	fileStyle       = ansi.Cyan2
+	itemsStyle      = ansi.Yellow
+	sizeStyle       = ansi.Magenta2
+	permsStyle      = ansi.Cyan
 )
 
-// =======
-// columns
-// =======
-// tree
-type rootDirName struct {
-	git    string
-	name   string
-	length int
+type rowKind int
+
+const (
+	rowRoot rowKind = iota
+	rowDir
+	rowFile
+)
+
+type listingRow struct {
+	kind   rowKind
+	prefix string
+	branch string
+	depth  int
+	dir    *builder.Directory
+	file   *builder.File
 }
 
-type subDirName struct {
-	divider string
-	git     string
-	name    string
-	length  int
-}
-
-type fileName struct {
-	divider string
-	icon    string
-	name    string
-	length  int
-}
-
-type treeColumn struct {
-	root      rootDirName
-	dirs      []subDirName
-	files     []fileName
-	maxLength int
-}
-
-// files
-type nFiles struct {
-	files  string
-	length int
-}
-
-type filesColumn struct {
-	root      nFiles
-	items     []nFiles
-	maxLength int
-}
-
-// dirs
-type nDirs struct {
-	dirs   string
-	length int
-}
-
-type dirsColumn struct {
-	root      nDirs
-	items     []nDirs
-	maxLength int
-}
-
-// size
-type size struct {
+type renderedRow struct {
+	source listingRow
+	nFiles int
+	nDirs  int
+	hasDir bool
 	size   string
-	length int
+	perms  string
 }
 
-type sizeColumn struct {
-	root      size
-	items     []size
-	maxLength int
-}
-
-// =====
-// print
-// =====
 func printDirectoryListing(root *builder.Directory, args builder.Args) error {
-	// sort
 	sorters := map[string]func(*builder.Directory){
 		"name":       sortByName,
 		"kind":       sortByKind,
 		"size":       sortBySize,
 		"git-status": sortByGitStatus,
-		// "date":       sortByDate,
 	}
 	sorter, ok := sorters[args.Sort]
 	if !ok {
@@ -115,342 +68,351 @@ func printDirectoryListing(root *builder.Directory, args builder.Args) error {
 
 	sorter(root)
 
-	// print
-	treeColumn := createTreeColumn(root)
-	filesColumn := createFilesColumn(root)
-	dirsColumn := createDirsColumn(root)
-	sizeColumn := createSizeColumn(root)
+	output, copyOutput := renderDirectoryListing(root, args)
+	fmt.Printf("%s\n\n", output)
 
-	// fullFreeSpace := termWidth - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
-	// fullFreeSpace -= 3 // account for the two extra spaces between columns
-
-	halfFreeSpace := termWidth/2 - treeColumn.maxLength - filesColumn.maxLength - dirsColumn.maxLength - sizeColumn.maxLength
-
-	freeSpace := halfFreeSpace
-
-	spaces := repeat(" ", freeSpace)
-
-	lines := make([]string, 0)
-	// header
-	line := fmt.Sprintf("%s%s%s%s%s%s%s%s",
-		repeat(" ", treeColumn.maxLength+freeSpace),
-		ansi.Underline,
-		repeat(" ", (filesColumn.maxLength+dirsColumn.maxLength)-len("items")+1)+"items",
-		ansi.Reset,
-		repeat(" ", 2),
-		ansi.Underline,
-		repeat(" ", sizeColumn.maxLength-len("size"))+"size",
-		ansi.Reset,
-	)
-	lines = append(lines, line)
-
-	// root
-	line = fmt.Sprintf("%s%s%s",
-		treeColumn.root.git,
-		treeColumn.root.name,
-		repeat(" ", treeColumn.maxLength-treeColumn.root.length),
-	)
-
-	// spaces
-	// line += spaces
-	line += repeat(" ", freeSpace)
-
-	// files column
-	line += fmt.Sprintf("%s%s",
-		repeat(" ", filesColumn.maxLength-filesColumn.root.length),
-		filesColumn.root.files,
-	)
-
-	line += " "
-
-	// dirs column
-	line += fmt.Sprintf("%s%s",
-		repeat("-", dirsColumn.maxLength-dirsColumn.root.length),
-		dirsColumn.root.dirs,
-	)
-
-	line += "  "
-
-	// size
-	line += fmt.Sprintf("%s%s",
-		repeat(" ", sizeColumn.maxLength-sizeColumn.root.length),
-		sizeColumn.root.size,
-	)
-
-	lines = append(lines, line)
-
-	// dirs
-	for i := range treeColumn.dirs {
-		// tree column
-		line = fmt.Sprintf("%s%s%s%s",
-			treeColumn.dirs[i].divider,
-			treeColumn.dirs[i].git,
-			treeColumn.dirs[i].name,
-			repeat(" ", treeColumn.maxLength-treeColumn.dirs[i].length),
-		)
-
-		// spaces
-		line += spaces
-
-		// files column
-		line += fmt.Sprintf("%s%s",
-			repeat(" ", filesColumn.maxLength-filesColumn.items[i].length),
-			filesColumn.items[i].files,
-		)
-
-		line += " "
-
-		// dirs column
-		line += fmt.Sprintf("%s%s",
-			repeat(" ", dirsColumn.maxLength-dirsColumn.items[i].length),
-			dirsColumn.items[i].dirs,
-		)
-
-		line += "  "
-
-		// size column
-		line += fmt.Sprintf("%s%s",
-			repeat(" ", sizeColumn.maxLength-sizeColumn.items[i].length),
-			sizeColumn.items[i].size,
-		)
-
-		lines = append(lines, line)
+	if args.Copy {
+		if err := copyFn(copyOutput); err != nil {
+			return err
+		}
 	}
-	// files
-	for i := range treeColumn.files {
-		// tree column
-		line = fmt.Sprintf("%s%s %s%s",
-			treeColumn.files[i].divider,
-			treeColumn.files[i].icon,
-			treeColumn.files[i].name,
-			repeat(" ", treeColumn.maxLength-treeColumn.files[i].length),
-		)
-
-		// spaces
-		line += spaces
-
-		// files column
-		line += repeat(" ", filesColumn.maxLength)
-
-		line += " "
-
-		// dirs column
-		line += repeat(" ", dirsColumn.maxLength)
-
-		line += "  "
-
-		// size column
-		line += fmt.Sprintf("%s%s",
-			repeat(" ", sizeColumn.maxLength-sizeColumn.items[len(treeColumn.dirs)+i].length),
-			sizeColumn.items[len(treeColumn.dirs)+i].size,
-		)
-
-		lines = append(lines, line)
-	}
-
-	columnLine := lines[0]
-	rootLine := lines[1]
-	content := strings.Join(lines[2:], "\n")
-
-	if args.Filter != "" {
-		content = filterLines(content, args.Filter)
-		content = strings.TrimRight(content, "\n")
-	}
-
-	fmt.Printf("%s\n%s\n%s\n\n", columnLine, rootLine, content)
 
 	return nil
 }
 
-func createTreeColumn(root *builder.Directory) treeColumn {
-	// root
-	// git status
-	rootGitStatus, rootGitStatusLength := gitStatusToString(root.GitStatus)
+func renderDirectoryListing(root *builder.Directory, args builder.Args) (string, string) {
+	rows := flattenRows(root, args.Depth)
+	if len(rows) == 0 {
+		return "", ""
+	}
 
-	// dir name
-	rootName, rootNameLength := dirNameToString(root.Name, true)
+	rendered := make([]renderedRow, len(rows))
+	for i, row := range rows {
+		rendered[i] = renderRow(row)
+	}
 
-	// length
-	rootLength := rootGitStatusLength + rootNameLength
-	maxLength := rootLength
-
-	// dirs
-	dirs := make([]subDirName, len(root.Dirs))
-	for i, dir := range root.Dirs {
-		// divider
-		divider := treeMiddle
-		if i == len(root.Dirs)-1 && len(root.Files) == 0 {
-			divider = treeEnd
+	visible := make([]renderedRow, 0, len(rendered))
+	for _, row := range rendered {
+		if row.source.kind == rowRoot {
+			visible = append(visible, row)
+			continue
 		}
-		dividerLength := 3
 
-		// git status
-		dirGitStatus, dirGitStatusLength := gitStatusToString(dir.GitStatus)
+		plain := strings.Join(
+			[]string{
+				stripAnsi(renderTreeCell(row.source, -1)),
+				strconv.Itoa(row.nFiles),
+				strconv.Itoa(row.nDirs),
+				stripAnsi(row.perms),
+				stripAnsi(row.size),
+			},
+			" ",
+		)
+		if args.Filter != "" && !strings.Contains(plain, args.Filter) {
+			continue
+		}
+		visible = append(visible, row)
+	}
 
-		// name
-		dirName, dirNameLength := dirNameToString(dir.Name, false)
+	treeWidth := len("tree")
+	for _, row := range visible {
+		treeWidth = max(treeWidth, visibleWidth(renderTreeCell(row.source, -1)))
+	}
+	treeWidth = max(treeWidth, len("(empty)"))
 
-		// length
-		length := dividerLength + dirGitStatusLength + dirNameLength
-		maxLength = max(maxLength, length)
-
-		dirs[i] = subDirName{
-			divider: divider,
-			git:     dirGitStatus,
-			name:    dirName,
-			length:  length,
+	fileDigits := 1
+	dirDigits := 1
+	for _, row := range visible {
+		if !row.hasDir {
+			continue
+		}
+		if row.nFiles > 0 {
+			fileDigits = max(fileDigits, len(strconv.Itoa(row.nFiles)))
+		}
+		if row.nDirs > 0 {
+			dirDigits = max(dirDigits, len(strconv.Itoa(row.nDirs)))
 		}
 	}
 
-	// files
-	files := make([]fileName, len(root.Files))
-	for i, file := range root.Files {
-		// divider
-		divider := treeMiddle
-		if i == len(root.Files)-1 {
-			divider = treeEnd
-		}
-		dividerLength := 3
-
-		// icon
-		icon, iconLength := iconToString(file.Name)
-
-		// name
-		name, nameLength := fileNameToString(file.Name)
-
-		length := dividerLength + 1 + iconLength + nameLength
-		maxLength = max(maxLength, length)
-
-		files[i] = fileName{
-			divider: divider,
-			icon:    icon,
-			name:    name,
-			length:  length,
-		}
+	itemsWidth := len("items")
+	sizeWidth := len("size")
+	permsWidth := len("perms")
+	for _, row := range visible {
+		itemsWidth = max(itemsWidth, visibleWidth(itemsToString(row, fileDigits, dirDigits)))
+		sizeWidth = max(sizeWidth, visibleWidth(row.size))
+		permsWidth = max(permsWidth, visibleWidth(row.perms))
 	}
 
-	return treeColumn{
-		root: rootDirName{
-			git:    rootGitStatus,
-			name:   rootName,
-			length: rootLength,
-		},
-		dirs:      dirs,
-		files:     files,
-		maxLength: maxLength,
+	nCols := 4
+	metaWidth := itemsWidth + permsWidth + sizeWidth
+	borderWidth := nCols*3 + 1
+
+	maxWidth := termWidth
+	if maxWidth <= 0 {
+		maxWidth = treeWidth + metaWidth + borderWidth
+	}
+	maxTreeWidth := maxWidth - metaWidth - borderWidth
+	if maxTreeWidth < 1 {
+		maxTreeWidth = 1
+	}
+	treeWidth = min(treeWidth, maxTreeWidth)
+
+	colWidths := []int{treeWidth, itemsWidth, permsWidth, sizeWidth}
+
+	topBorder := buildTableBorder("┌", "┬", "┐", colWidths)
+	midBorder := buildTableBorder("├", "┼", "┤", colWidths)
+	bottomBorder := buildTableBorder("└", "┴", "┘", colWidths)
+
+	header := formatTableRow(
+		ansi.Underline+"tree"+ansi.Reset,
+		ansi.Underline+"items"+ansi.Reset,
+		ansi.Underline+"perms"+ansi.Reset,
+		ansi.Underline+"size"+ansi.Reset,
+		treeWidth,
+		itemsWidth,
+		permsWidth,
+		sizeWidth,
+	)
+
+	lines := []string{topBorder, header, midBorder}
+
+	for _, row := range visible {
+		lines = append(lines, formatTableRow(
+			renderTreeCell(row.source, treeWidth),
+			itemsToString(row, fileDigits, dirDigits),
+			row.perms,
+			row.size,
+			treeWidth,
+			itemsWidth,
+			permsWidth,
+			sizeWidth,
+		))
+	}
+	lines = append(lines, bottomBorder)
+
+	output := strings.Join(lines, "\n")
+	return output, stripAnsi(output)
+}
+
+func buildTableBorder(left, middle, right string, widths []int) string {
+	var b strings.Builder
+	b.WriteString(left)
+	for i, width := range widths {
+		b.WriteString(repeat("─", width+2))
+		if i < len(widths)-1 {
+			b.WriteString(middle)
+		}
+	}
+	b.WriteString(right)
+	return b.String()
+}
+
+func formatTableRow(tree, items, perms, size string, treeWidth, itemsWidth, permsWidth, sizeWidth int) string {
+	tree = padRight(truncateWithEllipsis(tree, treeWidth), treeWidth)
+	items = padLeft(truncateWithEllipsis(items, itemsWidth), itemsWidth)
+	perms = padRight(truncateWithEllipsis(perms, permsWidth), permsWidth)
+	size = padLeft(truncateWithEllipsis(size, sizeWidth), sizeWidth)
+
+	return "│ " + tree + " │ " + items + " │ " + perms + " │ " + size + " │"
+}
+
+func renderRow(row listingRow) renderedRow {
+	switch row.kind {
+	case rowRoot:
+		return renderedRow{
+			source: row,
+			nFiles: len(row.dir.Files),
+			nDirs:  len(row.dir.Dirs),
+			hasDir: true,
+			size:   sizeToString(row.dir.Size),
+			perms:  permsToString(row.dir.Mode),
+		}
+	case rowDir:
+		return renderedRow{
+			source: row,
+			nFiles: len(row.dir.Files),
+			nDirs:  len(row.dir.Dirs),
+			hasDir: true,
+			size:   sizeToString(row.dir.Size),
+			perms:  permsToString(row.dir.Mode),
+		}
+	default:
+		return renderedRow{
+			source: row,
+			size:   sizeToString(row.file.Size),
+			perms:  permsToString(row.file.Mode),
+		}
 	}
 }
 
-func createFilesColumn(root *builder.Directory) filesColumn {
-	// root
-	rootFilesStr, rootFilesLength := nFilesToString(len(root.Files))
-
-	maxLength := rootFilesLength
-
-	// dirs
-	items := make([]nFiles, len(root.Files)+len(root.Dirs))
-	for i, dir := range root.Dirs {
-		filesStr, filesLength := nFilesToString(len(dir.Files))
-		items[i] = nFiles{
-			files:  filesStr,
-			length: filesLength,
-		}
-		maxLength = max(maxLength, filesLength)
+func itemsToString(row renderedRow, fileDigits, dirDigits int) string {
+	if !row.hasDir {
+		return ""
 	}
 
-	// files
-	for i := range root.Files {
-		j := len(root.Dirs) + i
-		items[j] = nFiles{
-			files:  "",
-			length: 0,
-		}
+	fileSlotWidth := fileDigits + 1
+	dirSlotWidth := dirDigits + 1
+
+	filePart := repeat(" ", fileSlotWidth)
+	if row.nFiles > 0 {
+		filePart = itemsStyle + fmt.Sprintf("%*d", fileDigits, row.nFiles) + FileIcon + ansi.Reset
 	}
 
-	return filesColumn{
-		root: nFiles{
-			files:  rootFilesStr,
-			length: rootFilesLength,
-		},
-		items:     items,
-		maxLength: maxLength,
+	dirPart := repeat(" ", dirSlotWidth)
+	if row.nDirs > 0 {
+		dirPart = itemsStyle + fmt.Sprintf("%*d", dirDigits, row.nDirs) + DirIcon + ansi.Reset
+	}
+
+	return strings.TrimRight(filePart+" "+dirPart, " ")
+}
+
+func renderTreeCell(row listingRow, maxWidth int) string {
+	switch row.kind {
+	case rowRoot:
+		gitStatus, _ := gitStatusToString(row.dir.GitStatus)
+		name, _ := dirNameToString(row.dir.Name, true)
+		return fitTreeCell(gitStatus+name, maxWidth, func(limit int) string {
+			truncated := truncateStyledName(row.dir.Name, true, limit)
+			return gitStatus + truncated
+		})
+	case rowDir:
+		gitStatus, _ := gitStatusToString(row.dir.GitStatus)
+		basePrefix := row.prefix + row.branch + gitStatus
+		nameCell := fitNameWithPrefix(basePrefix, row.dir.Name, true, false, maxWidth)
+		candidate := basePrefix + nameCell
+		return fitTreeCell(candidate, maxWidth, func(limit int) string {
+			return truncateWithEllipsis(stripAnsi(candidate), limit)
+		})
+	default:
+		icon, _ := iconToString(row.file.Name)
+		basePrefix := row.prefix + row.branch + icon + " "
+		nameCell := fitNameWithPrefix(basePrefix, row.file.Name, false, strings.HasPrefix(row.file.Name, "."), maxWidth)
+		candidate := basePrefix + nameCell
+		return fitTreeCell(candidate, maxWidth, func(limit int) string {
+			return truncateWithEllipsis(stripAnsi(candidate), limit)
+		})
 	}
 }
 
-func createDirsColumn(root *builder.Directory) dirsColumn {
-	// root
-	rootDirsStr, rootDirsLength := nDirsToString(len(root.Dirs))
-
-	maxLength := rootDirsLength
-
-	// dirs
-	items := make([]nDirs, len(root.Dirs)+len(root.Files))
-	for i, dir := range root.Dirs {
-		dirsStr, dirsLength := nDirsToString(len(dir.Dirs))
-		items[i] = nDirs{
-			dirs:   dirsStr,
-			length: dirsLength,
-		}
-		maxLength = max(maxLength, dirsLength)
+func fitTreeCell(content string, maxWidth int, fallback func(int) string) string {
+	if maxWidth < 0 || visibleWidth(content) <= maxWidth {
+		return content
 	}
 
-	// files
-	for i := range root.Files {
-		j := len(root.Dirs) + i
-		items[j] = nDirs{
-			dirs:   "",
-			length: 0,
-		}
+	next := fallback(maxWidth)
+	if visibleWidth(next) <= maxWidth {
+		return next
 	}
 
-	return dirsColumn{
-		root: nDirs{
-			dirs:   rootDirsStr,
-			length: rootDirsLength,
-		},
-		items:     items,
-		maxLength: maxLength,
+	return truncateWithEllipsis(stripAnsi(next), maxWidth)
+}
+
+func fitNameWithPrefix(prefix, name string, isDir, hidden bool, maxWidth int) string {
+	if maxWidth < 0 {
+		if isDir {
+			result, _ := dirNameToString(name, false)
+			return result
+		}
+		result, _ := fileNameToString(name)
+		return result
+	}
+
+	available := maxWidth - visibleWidth(prefix)
+	if available <= 1 {
+		return truncateWithEllipsis("", 1)
+	}
+
+	if isDir {
+		return truncateStyledName(name, false, available)
+	}
+	return truncateFileName(name, hidden, available)
+}
+
+func truncateStyledName(name string, isRoot bool, width int) string {
+	plainName := name + "/"
+	truncated := truncateWithEllipsis(plainName, width)
+
+	style := subDirStyle
+	if isRoot {
+		style = rootDirStyle
+	}
+	if strings.HasPrefix(name, ".") {
+		style = hiddenStyle
+	}
+
+	return style + truncated + ansi.Reset
+}
+
+func truncateFileName(name string, hidden bool, width int) string {
+	truncated := truncateWithEllipsis(name, width)
+	style := fileStyle
+	if hidden {
+		style = hiddenStyle
+	}
+	return style + truncated + ansi.Reset
+}
+
+func flattenRows(root *builder.Directory, maxDepth int) []listingRow {
+	rows := make([]listingRow, 0, 1+len(root.Dirs)+len(root.Files))
+	rows = append(rows, listingRow{
+		kind:  rowRoot,
+		depth: 0,
+		dir:   root,
+	})
+
+	appendChildren(root, "", &rows, 1, maxDepth)
+	return rows
+}
+
+func appendChildren(parent *builder.Directory, prefix string, rows *[]listingRow, currentDepth int, maxDepth int) {
+	if maxDepth > 0 && currentDepth > maxDepth {
+		return
+	}
+
+	totalChildren := len(parent.Dirs) + len(parent.Files)
+	if totalChildren == 0 {
+		return
+	}
+
+	for i, dir := range parent.Dirs {
+		isLast := i == totalChildren-1
+		branch := treeMiddle
+		if isLast {
+			branch = treeEnd
+		}
+		*rows = append(*rows, listingRow{
+			kind:   rowDir,
+			prefix: prefix,
+			branch: branch,
+			depth:  currentDepth,
+			dir:    dir,
+		})
+
+		childPrefix := prefix + treeVerticalGap
+		if isLast {
+			childPrefix = prefix + treeEmptyGap
+		}
+		appendChildren(dir, childPrefix, rows, currentDepth+1, maxDepth)
+	}
+
+	for i, file := range parent.Files {
+		j := len(parent.Dirs) + i
+		isLast := j == totalChildren-1
+		branch := treeMiddle
+		if isLast {
+			branch = treeEnd
+		}
+		current := file
+		*rows = append(*rows, listingRow{
+			kind:   rowFile,
+			prefix: prefix,
+			branch: branch,
+			depth:  currentDepth,
+			file:   &current,
+		})
 	}
 }
 
-func createSizeColumn(root *builder.Directory) sizeColumn {
-	// root
-	rootSizeStr, rootSizeLength := sizeToString(root.Size)
-
-	maxLength := rootSizeLength
-
-	// dirs
-	items := make([]size, len(root.Dirs)+len(root.Files))
-	for i, dir := range root.Dirs {
-		sizeStr, sizeLength := sizeToString(dir.Size)
-		items[i] = size{
-			size:   sizeStr,
-			length: sizeLength,
-		}
-		maxLength = max(maxLength, sizeLength)
-	}
-
-	// files
-	for i := range root.Files {
-		j := len(root.Dirs) + i
-		sizeStr, sizeLength := sizeToString(root.Files[i].Size)
-		items[j] = size{
-			size:   sizeStr,
-			length: sizeLength,
-		}
-		maxLength = max(maxLength, sizeLength)
-	}
-
-	return sizeColumn{
-		root:      size{size: rootSizeStr, length: rootSizeLength},
-		items:     items,
-		maxLength: maxLength,
-	}
-}
-
-// =======
-// helpers
-// =======
 func gitStatusToString(status builder.GitStatus) (string, int) {
 	var gitColor string
 	switch status {
@@ -465,77 +427,38 @@ func gitStatusToString(status builder.GitStatus) (string, int) {
 	}
 
 	str := fmt.Sprintf("%s%s%s ", gitColor, GitIcon, ansi.Reset)
-	length := 2
-
-	return str, length
+	return str, 2
 }
 
 func dirNameToString(name string, isRoot bool) (string, int) {
-	var dirStyle string
-	hidden := strings.HasPrefix(name, ".")
-
+	dirStyle := subDirStyle
 	switch {
-	case isRoot && hidden:
+	case strings.HasPrefix(name, "."):
 		dirStyle = hiddenStyle
-	case !isRoot && hidden:
-		dirStyle = hiddenStyle
-
-	case isRoot && !hidden:
+	case isRoot:
 		dirStyle = rootDirStyle
-
-	case !isRoot && !hidden:
-		dirStyle = subDirStyle
 	}
 
 	nameStr := fmt.Sprintf("%s%s/%s", dirStyle, name, ansi.Reset)
-	length := len(name) + 1 // plus the "/" character
-
-	return nameStr, length
+	return nameStr, len(name) + 1
 }
 
-func nDirsToString(nDirs int) (string, int) {
-	if nDirs == 0 {
-		return "", 0
-	}
-
-	nDirsStr := fmt.Sprintf("%d", nDirs)
-	length := len(nDirsStr) + 1
-	nDirsStr = fmt.Sprintf("%s%s%s%s", itemsStyle, nDirsStr, DirIcon, ansi.Reset)
-
-	return nDirsStr, length
-}
-
-func nFilesToString(nFiles int) (string, int) {
-	if nFiles == 0 {
-		return "", 0
-	}
-
-	nFilesStr := fmt.Sprintf("%d", nFiles)
-	length := len(nFilesStr) + 1
-	nFilesStr = fmt.Sprintf("%s%s%s%s", itemsStyle, nFilesStr, FileIcon, ansi.Reset)
-
-	return nFilesStr, length
-}
-
-func sizeToString(size int64) (string, int) {
-	if size == 0 {
-		return fmt.Sprintf("%sempty%s", emptyStyle, ansi.Reset), 5
-	}
-
+func sizeToString(size int64) string {
 	sizeStr := humanizeSize(size)
-	length := len(sizeStr)
+	if strings.HasSuffix(sizeStr, " B") {
+		sizeStr += " "
+	}
+	return fmt.Sprintf("%s%s%s", sizeStyle, sizeStr, ansi.Reset)
+}
 
-	sizeStr = fmt.Sprintf("%s%s%s", sizeStyle, sizeStr, ansi.Reset)
-
-	return sizeStr, length
+func permsToString(mode fmt.Stringer) string {
+	return fmt.Sprintf("%s%s%s", permsStyle, mode.String(), ansi.Reset)
 }
 
 func iconToString(name string) (string, int) {
 	icon := devicons.IconForPath(name)
 	iconStr := fmt.Sprintf("%s%s%s", ansi.Hex(icon.Color), icon.Icon, ansi.Reset)
-	length := 1
-
-	return iconStr, length
+	return iconStr, 1
 }
 
 func fileNameToString(name string) (string, int) {
@@ -545,76 +468,58 @@ func fileNameToString(name string) (string, int) {
 	}
 
 	nameStr := fmt.Sprintf("%s%s%s", style, name, ansi.Reset)
-	length := len(name)
-
-	return nameStr, length
+	return nameStr, len(name)
 }
 
-// ====
-// sort
-// ====
 func sortByName(root *builder.Directory) {
-	sort.SliceStable(root.Dirs, func(i, j int) bool {
-		return strings.ToLower(root.Dirs[i].Name) < strings.ToLower(root.Dirs[j].Name)
-	})
-
-	sort.SliceStable(root.Files, func(i, j int) bool {
-		return strings.ToLower(root.Files[i].Name) < strings.ToLower(root.Files[j].Name)
-	})
-
 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-
 	slices.SortFunc(root.Files, func(a, b builder.File) int {
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
+
+	for _, dir := range root.Dirs {
+		sortByName(dir)
+	}
 }
 
 func sortByKind(root *builder.Directory) {
-	sort.SliceStable(root.Dirs, func(i, j int) bool {
-		return root.Dirs[i].Name < root.Dirs[j].Name
-	})
-
-	sort.SliceStable(root.Files, func(i, j int) bool {
-		return root.Files[i].Name < root.Files[j].Name
-	})
-
 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
 		return strings.Compare(a.Name, b.Name)
 	})
-
 	slices.SortFunc(root.Files, func(a, b builder.File) int {
 		return strings.Compare(a.Name, b.Name)
 	})
+
+	for _, dir := range root.Dirs {
+		sortByKind(dir)
+	}
 }
 
 func sortBySize(root *builder.Directory) {
-	sort.SliceStable(root.Dirs, func(i, j int) bool {
-		return root.Dirs[i].Size < root.Dirs[j].Size
-	})
-
-	sort.SliceStable(root.Files, func(i, j int) bool {
-		return root.Files[i].Size < root.Files[j].Size
-	})
-
 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
 		if a.Size < b.Size {
 			return -1
-		} else if a.Size > b.Size {
+		}
+		if a.Size > b.Size {
+			return 1
+		}
+		return 0
+	})
+	slices.SortFunc(root.Files, func(a, b builder.File) int {
+		if a.Size < b.Size {
+			return -1
+		}
+		if a.Size > b.Size {
 			return 1
 		}
 		return 0
 	})
 
-	slices.SortFunc(root.Files, func(a, b builder.File) int {
-		if a.Size < b.Size {
-			return -1
-		} else if a.Size > b.Size {
-			return 1
-		}
-		return 0
-	})
+	for _, dir := range root.Dirs {
+		sortBySize(dir)
+	}
 }
 
 func sortByGitStatus(root *builder.Directory) {
@@ -625,29 +530,11 @@ func sortByGitStatus(root *builder.Directory) {
 		builder.GitModified:  3,
 	}
 
-	sort.SliceStable(root.Dirs, func(i, j int) bool {
-		return gitStatusOrder[root.Dirs[i].GitStatus] < gitStatusOrder[root.Dirs[j].GitStatus]
-	})
-
 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
 		return gitStatusOrder[a.GitStatus] - gitStatusOrder[b.GitStatus]
 	})
+
+	for _, dir := range root.Dirs {
+		sortByGitStatus(dir)
+	}
 }
-
-// func sortByDate(root *builder.Directory) {
-// 	sort.SliceStable(root.Dirs, func(i, j int) bool {
-// 		return root.Dirs[i].ModTime.Before(root.Dirs[j].ModTime)
-// 	})
-
-// 	sort.SliceStable(root.Files, func(i, j int) bool {
-// 		return root.Files[i].ModTime.Before(root.Files[j].ModTime)
-// 	})
-
-// 	slices.SortFunc(root.Dirs, func(a, b *builder.Directory) int {
-// 		return a.ModTime.Compare(b.ModTime)
-// 	})
-
-// 	slices.SortFunc(root.Files, func(a, b builder.File) int {
-// 		return a.ModTime.Compare(b.ModTime)
-// 	})
-// }

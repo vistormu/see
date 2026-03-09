@@ -3,8 +3,13 @@ package printer
 import (
 	"bufio"
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
+
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
 
 func humanizeSize(size int64) string {
 	const unit = 1024
@@ -28,6 +33,46 @@ func repeat(s string, count int) string {
 		result[i] = s[i%len(s)]
 	}
 	return string(result)
+}
+
+func visibleWidth(content string) int {
+	return lipgloss.Width(content)
+}
+
+func padRight(content string, width int) string {
+	padding := width - visibleWidth(content)
+	return content + repeat(" ", padding)
+}
+
+func padLeft(content string, width int) string {
+	padding := width - visibleWidth(content)
+	return repeat(" ", padding) + content
+}
+
+func truncateWithEllipsis(content string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if visibleWidth(content) <= width {
+		return content
+	}
+	if width == 1 {
+		return "…"
+	}
+
+	runes := []rune(content)
+	for i := len(runes); i >= 0; i-- {
+		candidate := string(runes[:i]) + "…"
+		if visibleWidth(candidate) <= width {
+			return candidate
+		}
+	}
+
+	return "…"
+}
+
+func stripAnsi(content string) string {
+	return ansiPattern.ReplaceAllString(content, "")
 }
 
 func filterLines(content, keyword string) string {

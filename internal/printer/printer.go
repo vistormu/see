@@ -24,6 +24,9 @@ func Print(command any, args builder.Args) error {
 
 	case *builder.FileContent:
 		return printFileContent(cmd, args)
+
+	case *builder.EnvVariable:
+		return printEnvVariable(cmd, args)
 	}
 
 	return nil

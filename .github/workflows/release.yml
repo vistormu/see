@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without v prefix (e.g. 0.0.6)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      sha_linux_arm64: ${{ steps.hashes.outputs.sha_linux_arm64 }}
+      sha_linux_amd64: ${{ steps.hashes.outputs.sha_linux_amd64 }}
+      sha_darwin_arm64: ${{ steps.hashes.outputs.sha_darwin_arm64 }}
+      sha_darwin_amd64: ${{ steps.hashes.outputs.sha_darwin_amd64 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Resolve version
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            version="${{ github.event.inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "${version}" ]]; then
+            echo "version is empty" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        env:
+          GOWORK: off
+        run: go test ./...
+
+      - name: Build archives
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          GOWORK: off
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          build_one() {
+            local goos="$1"
+            local goarch="$2"
+            local out="see_${VERSION}_${goos}_${goarch}"
+
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+              -ldflags "-s -w -X github.com/vistormu/see/cmd.Version=${VERSION}" \
+              -o "dist/see" .
+            tar -czf "dist/${out}.tar.gz" -C dist see
+            rm -f dist/see
+          }
+
+          build_one linux arm64
+          build_one linux amd64
+          build_one darwin arm64
+          build_one darwin amd64
+
+      - name: Calculate checksums
+        id: hashes
+        shell: bash
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          sha_linux_arm64="$(sha256sum "dist/see_${VERSION}_linux_arm64.tar.gz" | awk '{print $1}')"
+          sha_linux_amd64="$(sha256sum "dist/see_${VERSION}_linux_amd64.tar.gz" | awk '{print $1}')"
+          sha_darwin_arm64="$(sha256sum "dist/see_${VERSION}_darwin_arm64.tar.gz" | awk '{print $1}')"
+          sha_darwin_amd64="$(sha256sum "dist/see_${VERSION}_darwin_amd64.tar.gz" | awk '{print $1}')"
+          echo "sha_linux_arm64=${sha_linux_arm64}" >> "$GITHUB_OUTPUT"
+          echo "sha_linux_amd64=${sha_linux_amd64}" >> "$GITHUB_OUTPUT"
+          echo "sha_darwin_arm64=${sha_darwin_arm64}" >> "$GITHUB_OUTPUT"
+          echo "sha_darwin_amd64=${sha_darwin_amd64}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}
+          name: release v${{ steps.meta.outputs.version }}
+          files: dist/*.tar.gz
+          fail_on_unmatched_files: true
+
+  update-homebrew:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: vistormu/homebrew-see
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Update formula
+        shell: bash
+        env:
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+          SHA_LINUX_ARM64: ${{ needs.build-and-release.outputs.sha_linux_arm64 }}
+          SHA_LINUX_AMD64: ${{ needs.build-and-release.outputs.sha_linux_amd64 }}
+          SHA_DARWIN_ARM64: ${{ needs.build-and-release.outputs.sha_darwin_arm64 }}
+          SHA_DARWIN_AMD64: ${{ needs.build-and-release.outputs.sha_darwin_amd64 }}
+        run: |
+          set -euo pipefail
+          cat > tap/Formula/see.rb <<EOF
+          class See < Formula
+            desc "a better way to visualise your file system"
+            homepage "https://github.com/vistormu/see"
+            version "${VERSION}"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/vistormu/see/releases/download/v#{version}/see_#{version}_darwin_arm64.tar.gz"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/vistormu/see/releases/download/v#{version}/see_#{version}_darwin_amd64.tar.gz"
+                sha256 "${SHA_DARWIN_AMD64}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/vistormu/see/releases/download/v#{version}/see_#{version}_linux_arm64.tar.gz"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/vistormu/see/releases/download/v#{version}/see_#{version}_linux_amd64.tar.gz"
+                sha256 "${SHA_LINUX_AMD64}"
+              end
+            end
+
+            def install
+              bin.install "see"
+            end
+
+            test do
+              system bin/"see", "--help"
+            end
+          end
+          EOF
+
+      - name: Commit and push formula update
+        shell: bash
+        env:
+          VERSION: ${{ needs.build-and-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No formula changes to commit."
+            exit 0
+          fi
+          git add Formula/see.rb
+          git commit -m "see v${VERSION}"
+          git push origin HEAD:main
